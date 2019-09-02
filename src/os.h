@@ -39,6 +39,8 @@ void setWide(uchar v);
 void initModel();
 void uninitModel();
 void pause();
+void setStack();
+void revertStack();
 
 void outs(const char* s);
 void outsWide(const char* s);

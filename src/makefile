@@ -2,6 +2,7 @@
 # Build Apshai18!
 # 
 
+SDCCDIR = i:/sdcc
 CC = sdcc
 AS = sdasz80
 LD = sdldz80
@@ -13,9 +14,11 @@ CFLAGS = -mz80 --std-sdcc11 --fsigned-char $(OPT) $(DEBUG)
 ASFLAGS = -l
 
 ## set up your path to where the SDCC Z80 lib is
-LIBS = -l i:\sdcc\lib\z80\z80.lib
+LIBS = -l $(SDCCDIR)/lib/z80/z80.lib
 
-# 48k dos machine
+#LDFLAGS = -mjwx -b _CODE=0x4349 $(LIBS)
+
+# DOS machine
 LDFLAGS = -mjwx -b _CODE=0x5200 $(LIBS)
 
 OBJS = \
@@ -73,11 +76,15 @@ clean:
 	rm -f *.asm
 	rm -f *.sym
 	rm -f *.pdb
+	rm -f *.ilk
 	rm -f *.obj
 
 cleanall: clean
+	rm -f *.exe
 	rm -f *.cmd
 	rm -f *.cas
+	rm -f *.dsk
+	rm -f *.t8c
 
 
 tags:

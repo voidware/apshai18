@@ -31,40 +31,41 @@
 
 	.module crt0
 	.globl	_main
-        .globl	l__INITIALIZER
-        .globl	s__INITIALIZER 
-        .globl	s__INITIALIZED
-        .globl	l__DATA
-        .globl	s__DATA
+    .globl	l__INITIALIZER
+    .globl	s__INITIALIZER 
+    .globl	s__INITIALIZED
+    .globl	l__DATA
+    .globl	s__DATA
 
 init:
 
-        di
+    di  
 
-        ;; save the original stack area 
-        ld     (_exit+1),sp     
- 
-        ;; Initialise global variables
-        call    gsinit
+    ;; save the original stack area 
+    ld     (_exit+1),sp
+    
+    ;; Initialise global variables
+    call    gsinit
 	call	_main
-        jp      _exit  
+    jp      _exit  
         
 	;; Ordering of segments for the linker.
 	.area	_CODE
-        .area	_INITIALIZER
+    .area	_INITIALIZER
 	.area   _GSINIT
 	.area   _GSFINAL
 
 	.area	_DATA
-        .area	_INITIALIZED
+    .area	_INITIALIZED
 	.area   _BSS
 	.area   _HEAP
 
 	.area   _CODE
 
 _exit::
-        ld sp, #0
-        ret
+    ld sp, #0                   ; restores stack to original
+    ei
+    ret
 
 	.area   _GSINIT
 gsinit::

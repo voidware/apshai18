@@ -57,6 +57,9 @@ static uchar sidemode;
 static uint seed;
 static uchar* oldVidRam;
 
+static uchar* OldStack;
+static uchar* NewStack;
+
 void pushVideo(uchar* a)
 {
     oldVidRam = vidRam;
@@ -260,7 +263,7 @@ static uchar inPort(uchar port)
     __endasm;
 }
 
-static uchar ramAt(uchar* p)
+static uchar ramAt(uchar* p) __naked
 {
     // return 1 if we have RAM at address `p', 0 otherwise
     __asm
@@ -277,6 +280,7 @@ static uchar ramAt(uchar* p)
         ld   l,#1       // return result if ok
         ret  z          // return if ok
         dec  l          // return 0 if bad
+        ret
     __endasm;
 }
 
@@ -578,6 +582,8 @@ uchar* alloca(uint a)
 
 void initModel()
 {
+    uchar* rp = 0x4000;
+    
     cols80 = 0;
     vidRam = VIDRAM;
     TRSMemory = 0;
@@ -599,17 +605,37 @@ void initModel()
     }
 
     // how much RAM do we have?
-    TRSMemory += 16;
-    if (ramAt((uchar*)0x8000)) TRSMemory += 16;
-    if (ramAt((uchar*)0xC000)) TRSMemory += 16;
+    for (;;)
+    {
+        TRSMemory += 16;
+        rp += 0x4000;
+        if (!ramAt(rp)) break;
+    }
 
-    // locate the stack below the program
-    // SP is set to load address of code
-    // we want to have enough stack. ~2k ok for now.
+    NewStack = rp;
+}
+
+void setStack() __naked
+{
+    // locate the stack to `NewStack`
+    // ASSUME we are called from main
+    
     __asm
         pop hl
-        ld sp,#0x5200
-        push hl
+        ld (_OldStack),sp
+        ld sp,(_NewStack)
+        jp  (hl)
+    __endasm;
+}
+
+void revertStack() __naked
+{
+    // put stack back to original
+    // ASSUME we are called from main
+    __asm
+        pop hl
+        ld sp,(_OldStack)
+        jp (hl)
     __endasm;
 }
 

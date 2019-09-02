@@ -37,7 +37,7 @@
 #include "plot.h"
 
 // comment in to skip the sound intro when developing
-#define SKIP
+#define SKIPxx
 
 static void peformRAMTest()
 {
@@ -164,9 +164,11 @@ static void mainloop()
 void main()
 {
     initModel();
+    setStack();
     
     // initialise our own mini-clib
     libcInit();
     
     mainloop();
+    revertStack();
 }

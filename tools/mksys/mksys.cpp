@@ -29,6 +29,9 @@
 
 int verbose = 0;
 
+// XXX
+#define PROG_NAME "APSH18"
+
 const char* readline(FILE* fp)
 {
     static char buf[256];
@@ -146,8 +149,7 @@ void emitFile(FILE* fpout)
     size_t n = blocks.size();
     if (!n) return; // bail
 
-    // XXX
-    cas_write_header(fpout, "APSH18");
+    cas_write_header(fpout, PROG_NAME);
 
     int startAddr = 0;
     bool more;

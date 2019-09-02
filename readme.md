@@ -1,5 +1,7 @@
 # APSHAI18: Temple of Apshai 2018! for the TRS-80
 
+![](apshai18.gif)
+
 ## Status of Project
 Currently WIP. The dungeon is generated and you can move about (a bit).
 Next step; treasures, monsters, traps etc...
