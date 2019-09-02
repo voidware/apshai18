@@ -10,7 +10,11 @@ Next step; treasures, monsters, traps etc...
 
 _APSHAI18_ is a redeveloped version of the game "Temple of Apshai" for the [TRS-80](https://en.wikipedia.org/wiki/TRS-80), inspired by the original, but with some new ideas.
 
-The graphics are retro and blocky, just like the original. 
+_APSHAI18_ is a remake in the style of the original, but with many new improvements. Graphically the TRS-80 is _really_ limited and the original game was painfully slow at redrawing the screen.
+
+The remake renders the dungeon in real-time, with dynamic pan and zoom. That's on a _real_ TRS-80, not a modern emulator. Of course you still need to use your imagination as the graphic style is just as limited!
+
+Another *great* feature of the remake is that the dungeon is *generated*. The dungeon is different for _every_ game! The placement of treasures, traps and monsters is then intelligently arranged for gameplay.
 
 ## Installing/Running
 
