@@ -31,9 +31,9 @@
 
 // helper utility functions
 
+/*
 #include "defs.h"
 #include "os.h"
-#include "libc.h"
 
 void printfat(uchar x, uchar y, const char* fmt, ...)
 {
@@ -47,3 +47,4 @@ void printfat(uchar x, uchar y, const char* fmt, ...)
     va_end(args);
     flush();
 }
+*/

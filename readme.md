@@ -81,11 +81,11 @@ The conversion from IHX to CAS is done automatically by the makefile using this 
 ### Status Panel
 
 1. `ROOM NO. 52`  
-  Current room or corridor.
+   Current room or corridor.
 2. `WOUNDS: 100%`  
-  ie. not wounded.
+   ie. not wounded.
 3. `FATIGUE: 100%`  
-  ie all endurance available.
+   ie all endurance available.
 4. `WGT: 42 LBS`  
    weight carried
 5. `MONSTER SLAIN!`  

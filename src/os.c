@@ -29,164 +29,155 @@
  *  contact@voidware.com
  */
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#include <ctype.h>
+
 #include "defs.h"
 #include "os.h"
-#include "sound.h" // clobber_rti
 
 // store our own cursor position (do not use the OS location)
-static uint cursorPos;
+unsigned int cursorPos;
 
 // are we in 80 col mode?
 uchar cols80;
 
 // location of video ram 0x3c00 or 0xf800
-static uchar* vidRam;
+uchar* vidRam;
 
 // what model? (set up by initModel)
 uchar TRSModel;
+uchar useSVC;
+
+// should output be converted to upper case?
+uchar TRSUppercaseOutput;
 
 // How much memory in K  (initModel)
 uchar TRSMemory;
 uchar* TRSMemoryFail;
 
-// sidebar "screen" memory for 80 cols on 64
-static uchar sidebar[16*16];
-static uchar sidemode;
 
 // random number seed
 static uint seed;
-static uchar* oldVidRam;
 
 static uchar* OldStack;
 static uchar* NewStack;
 
-void pushVideo(uchar* a)
-{
-    oldVidRam = vidRam;
-    vidRam = a;
-}
 
-void popVideo()
+static uint vidoff(char x, char y)
 {
-    if (cols80)
-    {
-        memcpy(oldVidRam, vidRam, VIDSIZE80);
-    }
-    else
-    {
-        memcpy(oldVidRam, vidRam, VIDSIZE);
-    }
-
-    vidRam = oldVidRam;
-         
-}
-
-static uint vidoff(uchar x, uchar y)
-{
-    // calculate the video offset from the screen base for char pos (x,y)
-    // for 64 col mode, x >= 64 will offset into `sidebar' ram and set
-    // `sidemode'
+    // calculate the video offset from the screen base for CHARACTER pos (x,y)
     uint a;
-    sidemode = 0;
 
     a = (uint)y<<6;
     if (cols80) a += (uint)y<<4;
-    else
-    {
-        if (x >= 64)
-        {
-            x -= 64;
-            a = ((uint)y<<4);
-            sidemode = 1;
-        }
-    }
     return a + x;
 }
 
-static uchar* vidaddrfor(uint a)
+uchar* vidaddrfor(uint a)
 {
     // find the video ram address for offset `a'
-    if (sidemode) return sidebar + a; // in the sidebar, model <= 3
-    else
-    {
-        // actual video ram
-        if (a >= VIDSIZE && !cols80 || a >= VIDSIZE80) return 0;
-        return vidRam + a;
-    }
+    if (a >= VIDSIZE && !cols80 || a >= VIDSIZE80) return 0;
+    return vidRam + a;
 }
 
-uchar* vidaddr(uchar x, uchar y)
+uchar* vidaddr(char x, char y)
 {
     // return the video address of (x,y) or 0 if off end.
     return vidaddrfor(vidoff(x,y));
 }
 
-void outcharat(uchar x, uchar y, uchar c)
+static void setChar(volatile char* a, char c)
+{
+    if (TRSModel <= 2)
+    {
+        // Each time we see a T, check for lcase mod?
+        if (c == 'T')
+        {
+            // 20 displays the same as T, 20+64=84=T
+            *a = 20;
+            TRSUppercaseOutput = (*a != 20);
+        }
+
+        if (TRSUppercaseOutput) c = toupper(c);
+    }
+
+    *a = c;
+}
+
+void outcharat(char x, char y, char c)
 {
     // set video character directly without affecting cursor position
-    *vidaddr(x,y) = c;
+    setChar(vidaddr(x, y), c);
 }
 
-void lastLine()
+static uint nextLinePos()
 {
-    // put the cursor on the last line and clear it
-    if (cols80)
-    {
-        setcursor(0, 23);
-        memset(VIDRAM80 + 23*80, ' ', 80);
-    }
-    else
-    {
-        setcursor(0, 15);
-        memset(VIDRAM + 15*64, ' ', 64);
-    }
-}
-
-void nextLine()
-{
+    // calculate the next line from the current cursor pos
     uint a = cursorPos;
     if (cols80)
     {
         // bump a to the next multiple of 80
-        uint v = 80;
-        if (a >= 800) v += 800;  // skip around half
-        while (v <= a) v += 80; // until next line
-        a = v;
+        uchar q = a/80;
+        a = (q + 1)*80;
+    }
+    else
+    {
+        a = (a + 64) & ~63;  // start of next line
+    }
+    return a;
+}
 
-        if (a >= VIDSIZE80)
+static void clearLine()
+{
+    // clear from current cursor pos to end of line
+    uint a = cursorPos;
+    uint b = nextLinePos();
+    memset(vidaddrfor(a), ' ', b - a);
+}
+
+void lastLine()
+{
+    // put the cursor on the last line 
+    if (cols80) setcursor(0, 23);
+    else setcursor(0, 15);
+}
+
+void nextLine()
+{
+    uchar sc;
+
+    char* p = vidRam;
+    cursorPos = nextLinePos();
+
+    if (cols80)
+    {
+        sc = (cursorPos >= VIDSIZE80);
+        if (sc)
         {
             // scroll
-            memmove(VIDRAM80, VIDRAM80 + 80, 23*80);
-
-            // place at last line and clear line
-            lastLine();
-            return;
+            memmove(p, p + 80, VIDSIZE80 - 80);
         }
     }
     else
     {
-        if (sidemode)
+        sc = (cursorPos >= VIDSIZE);
+        if (sc)
         {
-            // next line
-            // NB: no test for overflow test or scrolling on sidebar
-            a = (a + 16) & ~15;
-        }
-        else
-        {
-            a = (a + 64) & ~63;  // start of next line
-            if (a >= VIDSIZE)
-            {
-                // scroll
-                memmove(VIDRAM, VIDRAM + 64, 15*64);
-                
-                // place at last line and clear line
-                lastLine();
-                return;
-            }
+            // scroll
+            memmove(p, p + 64, VIDSIZE - 64);
         }
     }
-    cursorPos = a;
+
+    if (sc)
+    {
+        // place at last line and clear line
+        lastLine();
+        clearLine();
+    }
 }
+
 
 void outchar(char c)
 {
@@ -200,6 +191,7 @@ void outchar(char c)
     }
     else if (c == '\n')
     {
+        //clearLine();
         nextLine();
         return;
     }
@@ -209,7 +201,7 @@ void outchar(char c)
     }
     else
     {
-        *p = c;
+        setChar(p, c);
         ++a;
         if (a >= VIDSIZE && !cols80 || a >= VIDSIZE80)
         {
@@ -221,23 +213,21 @@ void outchar(char c)
     cursorPos = a;
 }
 
-void setcursor(uchar x, uchar y)
+void setcursor(char x, char y)
 {
     cursorPos = vidoff(x, y);
 }
 
+void clsc(uchar c)
+{
+    memset(vidRam, c, (cols80 ? VIDSIZE80 : VIDSIZE));
+    cursorPos = 0;
+    setWide(0);
+}
+
 void cls()
 {
-    if (cols80)
-        memset(vidRam, ' ', VIDSIZE80);
-    else
-    {
-        memset(vidRam, ' ', VIDSIZE);
-        memset(sidebar, ' ', sizeof(sidebar));
-    }
-
-    setcursor(0,0);
-    setWide(0);
+    clsc(' ');
 }
 
 
@@ -263,6 +253,20 @@ static uchar inPort(uchar port)
     __endasm;
 }
 
+void enableInterrupts()
+{
+    __asm
+        ei
+    __endasm;        
+}
+
+void disableInterrupts()
+{
+    __asm
+        di
+    __endasm;        
+}
+
 static uchar ramAt(uchar* p) __naked
 {
     // return 1 if we have RAM at address `p', 0 otherwise
@@ -282,6 +286,42 @@ static uchar ramAt(uchar* p) __naked
         dec  l          // return 0 if bad
         ret
     __endasm;
+}
+
+char* getHigh() __naked
+{
+    __asm
+        ld  hl,#0
+        ld  b,h
+        ld  a,#100 // select HIGH
+        RST 0x28   // @HIGH@ -> hl
+        ret
+    __endasm;
+}
+static void setOFLAGS(uchar v)
+{
+    __asm
+        pop  hl
+        dec  sp
+        pop  bc
+        push bc    // b = v
+        inc  sp
+        push hl
+        ld   a,#101    // @FLAGS
+        rst  0x28
+        ld   14(iy),b
+    __endasm;
+}
+
+static void setM4Map2()
+{
+    // switch to config 3; ram + ram + KB + VIDEO
+    // this is the mode we will run in
+    
+    disableInterrupts();
+    outPort(0x84, 0x86); // M4 map 3, 80cols
+    setOFLAGS(0x86);
+    enableInterrupts();
 }
 
 static uchar testBlock(uchar a)
@@ -327,13 +367,12 @@ static uchar getModel()
     
     // attempt to change to M4 bank 1, which maps RAM over 14K ROM
     // will work if we _are_ M4.
-    outPort(0x84, 1); 
+    //outPort(0x84, 1); 
 
     // if we have RAM, then M4
     if (ramAt((uchar*)0x2000))
     {
         // this is a 4 or 4P.
-        // NB: leave at bank 1 for now...
         m = 4;
     }
     else
@@ -357,44 +396,13 @@ static uchar getModel()
 
 static void setSpeed(uchar fast)
 {
-    if (TRSModel >= 4)
+    if (useSVC)
     {
         // M4 runs at 2.02752 or 4.05504 MHz
         outPort(0xec, fast ? 0x40 : 0);
     }
 }
 
-static uchar readKeyRowCol(uchar* rowcol)
-{
-    uchar r = 1;
-    uchar i;
-    static uchar kbrows[8];
-    
-    for (i = 0; i < 8; ++i)
-    {
-        uchar v = cols80 ? *(KBBASE80 + r) : *(KBBASE + r);
-        r <<= 1;
-        
-        if (v != kbrows[i])
-        {
-            kbrows[i] = v;
-
-            if (v) // press not release
-            {
-                *rowcol = i; // row
-            
-                rowcol[1] = 0;
-                while (v > 1)
-                {
-                    v >>= 1;
-                    ++rowcol[1];
-                }
-                return 1;
-            }
-        }
-    }
-    return 0;
-}
 
 static const char keyMatrix[] =
 {
@@ -408,6 +416,115 @@ static const char keyMatrix[] =
     'Z', 'Z', 'Z', 'Z', 'Z', 'Z', 'Z', 'Z', 
 };
 
+static uchar keyRow = 7;
+static uchar keyCol;
+static uchar keyHold;
+
+static uchar readKeyRowCol()
+{
+    uchar r = 1;
+    uchar i;
+    uchar hit = 0;
+
+    static uchar kbrows[8];
+
+    for (i = 0; i < 8; ++i)
+    {
+        uchar v = cols80 ? *(KBBASE80 + r) : *(KBBASE + r);
+        r <<= 1;
+
+        uchar t = v ^ kbrows[i];
+
+        if (t)
+        {
+            kbrows[i] = v;
+            keyHold = 0;
+
+            // press not release            
+            if (!hit && (v & t))
+            {
+                hit = 1;
+
+                keyRow = i;
+                keyCol = 0;
+                keyHold = 1;
+                
+                while (t > 1)
+                {
+                    t >>= 1;
+                    ++keyCol;
+                }
+            }
+        }
+    }
+
+    return hit;
+}
+
+
+char scanKeyMatrix(char hold)
+{
+    // return key if pressed or 0
+
+    // ignore shift & control
+    char c = 0;
+    uchar hit;
+    
+    hit = readKeyRowCol();
+
+    if (keyHold)
+    {
+        if (keyRow != 7)
+        {
+            c = keyMatrix[keyRow*8 + keyCol];
+            if (!hit && hold != c)
+            {
+                keyHold = 0;
+                c = 0;
+            }
+        }
+    }
+    
+    return c;
+}
+
+// call the ROM to scan a key
+char scanKey()
+{
+    // return key pressed or 0 if none
+
+    if (useSVC)
+    {
+    __asm
+        ld    a,#8      // @KBD
+        RST   0x28      // uses DE
+        ld    l,a
+    __endasm;
+    }
+    else
+    {
+      __asm
+        call    0x2b
+        ld      l,a
+    __endasm;
+    }
+}
+
+static void dsp4(char c)
+{
+    // model 4 charout
+    __asm
+        pop  hl
+        dec  sp
+        pop  af                 // a = char
+        push af
+        inc  sp
+        push hl
+        ld   c,a
+        ld   a,#2               // @DSP
+        rst  0x28
+    __endasm;
+}
 
 static uchar keyIdleState;
 static IdleHandler idleHandler;
@@ -437,25 +554,6 @@ static void _keyIdle()
     }
 }
 
-char scanKey()
-{
-    // return key if pressed or 0
-    uchar rc[2];
-    
-    // ignore shift & control
-    return (readKeyRowCol(rc) && rc[0] != 7) ? keyMatrix[rc[0]*8 + rc[1]] : 0;
-}
-
-void pause()
-{
-    // delay, unless key pressed
-    int c = 1000;  // XX scale delay by machine speed
-    while (--c)
-    {
-        if (scanKey()) return;
-    }
-}
-
 char getkey()
 {
     // wait for a key
@@ -479,9 +577,140 @@ char getkey()
     }
 }
 
+// use ROM
+
+uchar rom4_getline(char* buf, uchar nmax) __naked
+{
+    // model 4 version
+    __asm
+        pop  bc     // ret
+        pop  hl     // buf
+        pop  de     // e = nmax
+        push de
+        push hl
+        push bc
+        ld   b,e    // nmax
+        ld   c,#0
+        ld   a,#9   // @KEYIN
+        RST  0x28
+        ld   l,b    // number typed
+        ret        
+    __endasm;
+}
+
+uchar rom_getline(char* buf, uchar nmax) __naked
+{
+    // emit prompt and handle backspace etc
+    __asm
+        pop  bc     // ret
+        pop  hl     // buf
+        pop  de     // e = nmax
+        push de
+        push hl
+        push bc
+        ld   b,e    // nmax
+        call 0x40
+        ld   l,b    // number typed
+        ret
+    __endasm;
+}
+
+static uchar c4row;
+static uchar c4col;
+static void setROMCursor()
+{
+    if (useSVC)
+    {
+        c4row = cursorPos/80;
+        c4col = cursorPos - c4row*80;
+        
+        __asm
+            ld  a,#15   // @VDCTL
+            ld  b,#3    // set cursor
+            ld  hl,#_c4row
+            ld  d,(hl)
+            ld  hl,#_c4col
+            ld  e,(hl)
+            ex  de,hl
+            RST 0x28
+        __endasm;
+    }
+    else
+    {
+        // set the ROM cursor to our cursor
+        *ROM_CURSOR = VIDRAM + cursorPos;
+    }
+}
+
+uchar getline(char* buf, uchar nmax)
+{
+    setROMCursor();
+
+    uchar n;
+
+    if (useSVC)
+    {
+        dsp4(0x0e); // cursor on
+        n = rom4_getline(buf, nmax);
+        dsp4(0x0f); // cursor off
+    }
+    else
+    {
+        n = rom_getline(buf, nmax);
+    }
+
+    // terminate
+    buf[n] = 0;
+    return n;
+}
+
+char getSingleChar(const char* msg)
+{
+    // print a message and get a single key & echo it and newline
+    char c;
+    outs(msg);
+
+    c = getkey();
+    c = toupper(c);
+    
+    outchar(c);
+    if (c != '\n') outchar('\n');
+    return c;
+}
+
+void pause()
+{
+    // delay, unless key pressed
+    int c = 1000;  // XX scale delay by machine speed
+    while (--c)
+    {
+        if (scanKey()) return;
+    }
+}
+
 void outs(const char* s)
 {
     while (*s) outchar(*s++);
+}
+
+void outint(int v)
+{
+    char buf[17];
+    _itoa(v, buf, 10);  // STDCC extention
+    outs(buf);
+}
+
+void outuint(uint v)
+{
+    char buf[17];
+    _uitoa(v, buf, 10);  // STDCC extention
+    outs(buf);
+}
+
+int putchar(int c)
+{
+    outchar(c);
+    return c;
 }
 
 void outsWide(const char* s)
@@ -499,42 +728,113 @@ void outsWide(const char* s)
     }
 }
 
-uchar getline2(char* buf, uchar nmax)
+/* Really simple printf that handles only the very basics */
+typedef void (*Emitter)(char);
+static void _printf_simple(Emitter e, const char* f, va_list args)
 {
-    // our own version of `getline' 
-    // the os version always prints the newline, but this one
-    // does not. This can be useful when we dont want the screen to scroll
-    // because of our input.
-    uchar pos = 0;
+    // handles:
+    // %d, %x, %s, %ld
     for (;;)
     {
-        char c;
+        char c = *f++;
+        if (!c) break;
 
-        // emit prompt
-        vidRam[cursorPos] = '_';
+        if (c == '%')
+        {
+            char buf[33];
+            char* s = 0;
+            char width = 0;
+            
+            if (isdigit(*f))
+            {
+                width = atoi(f);
+                do
+                {
+                    ++f;
+                } while (isdigit(*f));
+            }
+            
+            c = *f++;
+            if (!c) break;
+            
+            switch (c)
+            {
+            case 'd':
+                _itoa(va_arg(args, int), buf, 10);  // STDCC extention
+                s = buf;
+                break;
+            case 'x':
+                _itoa(va_arg(args, int), buf, 16);  // STDCC extention
+                s = buf;
+                break;
+            case 's':
+                s = va_arg(args, char*);
+                break;
+            case 'l':
+                // XX ASSUME %ld
+                ++f;
+                _ltoa(va_arg(args, long), buf, 10);  // STDCC extention
+                s = buf;
+                break;
+            case 'c':
+                buf[0] = va_arg(args, int);
+                buf[1] = 0;
+                s = buf;
+                break;
+            }
+
+            if (s)
+            {
+                while (*s)
+                {
+                    (*e)(*s++);
+                    --width;
+                }
+
+                // pad to width if any
+                while (width > 0) { --width; (*e)(' '); }
+                
+                continue;
+            }
+        }
+        else if (c == '\\')
+        {
+            c = *f++;
+            if (!c) break;
+            if (c == 'n') c = '\n';
+        }
         
-        // wait for key
-        c = getkey();
-
-        if (c == '\b') // backspace
-        {
-            if (pos)
-            {
-                --pos;
-                outchar(c);
-            }
-        }
-        else 
-        {
-            if (pos < nmax)
-            {
-                buf[pos++] = c;
-                outchar(c);
-            }
-            if (c == '\r') break;  // enter hit
-        }
+        (*e)(c);
     }
-    return pos;
+}
+
+void printf_simple(const char* f, ...)
+{
+    va_list args;
+    va_start(args, f);
+    _printf_simple(outchar, f, args);
+    va_end(args);
+}
+
+static char* emit_sprintf_pos;
+
+static void emit_sprintf(char c)
+{
+    *emit_sprintf_pos++ = c;
+}
+
+int sprintf_simple(char* buf, const char* f, ...)
+{
+    va_list args;
+    va_start(args, f);
+
+    emit_sprintf_pos = buf;
+    _printf_simple(emit_sprintf, f, args);
+    va_end(args);
+
+    *emit_sprintf_pos = 0; // terminate
+    
+    return emit_sprintf_pos - buf;
 }
 
 
@@ -582,44 +882,60 @@ uchar* alloca(uint a)
 
 void initModel()
 {
-    uchar* rp = 0x4000;
+    uchar* rp = (uchar*)0x4000;
     
     cols80 = 0;
     vidRam = VIDRAM;
     TRSMemory = 0;
 
-    // leave interrupts off in all cases for now...
-    clobber_rti();
-
     TRSModel = getModel();
 
     if (TRSModel >= 4)
     {
+        char* h = getHigh();
+        
         cols80 = 1;
+        useSVC = 1;
         vidRam = VIDRAM80;
-        
-        outPort(0x84, 0x86); // M4 map, 80cols, page 1
-        setSpeed(0); // slow (for now..)
-        
-        TRSMemory = 16;
-    }
 
-    // how much RAM do we have?
-    for (;;)
+        // switch off cursor
+        dsp4(0x0f);
+
+        setM4Map2();
+        setSpeed(1); // fast!
+
+        TRSMemory = 64;
+
+        // m4 0xf400 - vidram is keyboard area
+        NewStack = (uchar*)0xF400; 
+        if (NewStack > h) NewStack = h;
+    }
+    else
     {
-        TRSMemory += 16;
-        rp += 0x4000;
-        if (!ramAt(rp)) break;
+        // how much RAM do we have?
+        for (;;)
+        {
+            TRSMemory += 16;
+            rp += 0x4000;
+            if (!ramAt(rp)) break;
+        }
+        NewStack = rp;
+
+        if (TRSModel <= 2)
+        {
+            // convert output to upper case
+            TRSUppercaseOutput = 1;
+        }
     }
 
-    NewStack = rp;
+    // switch interrupts back on now we're done poking around memory
+    enableInterrupts();
 }
 
 void setStack() __naked
 {
     // locate the stack to `NewStack`
     // ASSUME we are called from main
-    
     __asm
         pop hl
         ld (_OldStack),sp
@@ -701,5 +1017,32 @@ uchar randc(uchar n)
 }
 
 
+void peformRAMTest()
+{
+    uchar a;
+    uchar n = TRSMemory;
+    if (n >= 64) n -= 3; // dont test the top 3k screen RAM + KB
+
+    // loop 1K at a time.
+    setcursor(0, 1);
+    outs("RAM TEST ");
+    a = 0;
+    do
+    {
+        uchar b = a<<2;
+        ++a;
+        if (TRSMemory < 64) b += 0x40; 
+
+        setcursor(9, 1);
+        printf_simple("%dK ", a);
+        if (!ramTest(b, 4)) break; // test 1K
+        --n;
+    } while (n);
+
+    if (!n)
+        outs("OK\n");
+    else
+        printf_simple("FAILED at %x\n", (uint)TRSMemoryFail);
+}
 
 

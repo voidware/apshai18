@@ -29,4 +29,4 @@
  *  contact@voidware.com
  */
 
-void printfat(uchar x, uchar y, const char* fmt, ...);
+//void printfat(uchar x, uchar y, const char* fmt, ...);

@@ -39,7 +39,8 @@
 
 init:
 
-    di  
+    ;; this will be enabled again after init
+    di
 
     ;; save the original stack area 
     ld     (_exit+1),sp

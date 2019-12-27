@@ -29,10 +29,20 @@
  *  contact@voidware.com
  */
 
+/*
+ * The dungeon is generated according to a character based layout
+ * size, eg 64x48 and these cells correspond to pixels accoring to (2x, y),
+ * so that the map would fill a 128x48 screen at unit scale.
+ *
+ * When zoomed in the scale is 2x, 4x, 8x. Of course now only part of the
+ * dungeon is visible and will be clipped accordingly. 
+ */
+
 #include "defs.h"
 #include "dungeon.h"
 #include "rect.h"
 #include "utils.h"
+#include "game.h"
 
 #ifdef STANDALONE
 
@@ -81,14 +91,9 @@ static unsigned int randc(unsigned int n)
     return random() % n;
 }
 
-static void printfat(uchar x, uchar y, const char* fmt, ...)
-{
-}
-
 #else
 
 #include "os.h"
-#include "libc.h"
 #include "plot.h"
 
 #define assert(_x)
@@ -98,8 +103,8 @@ static void printfat(uchar x, uchar y, const char* fmt, ...)
 #define EPF(_c, _x)
 #define EPF1(_c, _x, _a)
 #define EPF2(_c, _x, _a, _b)
-#define TPF(_x)   printf(_x)
-#define TPF1(_x, _a)   printf(_x, _a)
+#define TPF(_x)   printf_simple(_x)
+#define TPF1(_x, _a)   printf_simple(_x, _a)
 
 #endif // STANDALONE
 
@@ -243,6 +248,7 @@ typedef struct
 // x8 is max scale
 #define MAX_SCALEBITS 3
 
+// coordinates are stored 2x, 2y
 static VHLine hlines[MAX_HLINES];
 static VHLine vlines[MAX_VLINES];
 static Uint hlineCount;
@@ -252,19 +258,6 @@ static Uint vlineCount;
 static int viewx;
 static int viewy;
 static Uint scalebits;
-
-// a position is a 16 bit value on the MAX_SCALEBITS scale
-typedef int Pos;
-
-// location of something (full res)
-typedef struct
-{
-    Pos x;
-    Pos y;
-} Coord;
-
-static Coord playerPos;
-static Uint playerDir = East;
 static Uint entranceRoom;
 
 #define VIEW_W  128
@@ -553,7 +546,7 @@ static void addRoom(Ent* e)
     // these will need to be scaled up as usual
     Room* rp = rooms + roomCount;
     memset(rp, 0, sizeof(Room));
-    memcpy(&rp->r, &e->r, sizeof(Rect));
+    rp->r = e->r;
     e->room = ++roomCount; // 1-based
 }
 
@@ -758,7 +751,7 @@ static void placeCorridor(Ent* e)
 static BOOL randomCorridor(Ent* e)
 {
     // find longest corridor
-    Int c;
+    Int c = 0;
     
     for (e->len = minCorridorLength; e->len <= maxCorridorConnect; ++e->len)
     {
@@ -848,7 +841,6 @@ static void set_exit_door(Exit* e, Uint otherroom)
         EPF2(e->otherroom, "exit has already other room %d, trying to add %d\n", e->otherroom, otherroom);
 
         e->otherroom = otherroom;
-
         addRoomExit(e, otherroom);
     }
 }
@@ -856,8 +848,8 @@ static void set_exit_door(Exit* e, Uint otherroom)
 // -1 => above
 // +1 => below
 static Int clip;
-static Int clipx;
-static Int clipy;
+//static Int clipx;
+//static Int clipy;
 
 static void scaleCoordMax(Coord* c)
 {
@@ -866,22 +858,20 @@ static void scaleCoordMax(Coord* c)
     c->x <<= MAX_SCALEBITS+1;
 }
 
-static void clipCoord(Coord* c)
+static Int clipCoord(Coord* c)
 {
-    clipx = 0;
-    clipy = 0;
-    
+    Int cl = 0;
     int v;
 
     v = c->x - viewx;
     if (v < 0)
     {
-        clipx = -1;
+        cl = -1;
         v = 0;
     }
-    else if (v >= VIEW_W-1)
+    else if (v > VIEW_W-1)
     {
-        clipx = 1;
+        cl = 1;
         v = VIEW_W-1;
     }
     c->x = v;
@@ -889,21 +879,22 @@ static void clipCoord(Coord* c)
     v = c->y - viewy;
     if (v < 0)
     {
-        clipy = -1;
+        cl = -1;
         v = 0;
     }
     else if (v >= VIEW_H)
     {
-        clipy = 1;
+        cl  = 1;
         v = VIEW_H-1;
     }
     c->y = v;
-    
+    return cl;
 }
 
 static Uint scaleClipX(Uint x)
 {
     // NB: x is 2x
+    // set `clip` if clipped. return clipped scaled x
     
     int x1;
     
@@ -936,6 +927,8 @@ static Uint scaleClipX(Uint x)
 
 static Uint scaleClipY(Uint y)
 {
+    // NB: y input is 2y
+    
     int y1;
 
     clip = 0;
@@ -953,8 +946,11 @@ static Uint scaleClipY(Uint y)
     }
     else
     {
+        // otherwise reduce to 1x
         y1 = y>>1;
     }
+
+    // translate to view
     y1 -= viewy;
     
     if (y1 < 0)
@@ -1045,9 +1041,13 @@ static void finish()
     entranceRoom = entr->room;
 
     // place player at start position
-    playerPos.x = entr->x + 1;
-    playerPos.y = entr->y;
-    scaleCoordMax(&playerPos);
+    player.room = entranceRoom;
+    player.pos.x = entr->x + 1;
+    player.pos.y = entr->y;
+    player.dir = East;
+
+    // coordinates are at max scale
+    scaleCoordMax(&player.pos);
 }
 
 static BOOL createFeature()
@@ -1074,7 +1074,8 @@ static BOOL createFeature()
         ent.x = e->x;
         ent.y = e->y;
         ent.d = e->d;
-        
+
+        // build a corridor or a room?
         if (ent.d < 0)
         {
             // from corridor, must have a room
@@ -1281,20 +1282,20 @@ BOOL generateDungeon()
 
     init();
 
-    printfat(0, 1, "Generating Dungeon    ");
-
     // place the first room in the centre
     e.x = DUN_WIDTH/2;
     e.y = DUN_HEIGHT/2;
     e.d = Void;
     randomRoom(&e);
+
+    TPF("Generating Dungeon    ");
     
     for (;;)
     {
         Uint n = roomCount;
         if (n >= NUM_FEATUES) break; // enough
 
-        TPF1("\b\b\b%-2d%%", (int)(n<<1));
+        TPF1("\b\b\b%2d%%", (int)(n<<1));
         if (!createFeature())
         {
             DPF(verbose, "cannot add any more features\n");
@@ -1322,6 +1323,7 @@ BOOL generateDungeon()
 
 
 #ifndef STANDALONE
+
 static void renderVH()
 {
     // render both horizontal lines and vertical lines interleaved
@@ -1387,14 +1389,14 @@ static void renderVH()
 
 void renderDungeon()
 {
-    uchar vbuf[64*24]; // video double buffer
-    pushVideo(vbuf);
+    //uchar vbuf[64*24]; // video double buffer
+    //pushVideo(vbuf);
     cls();
 
     // render the dungeon walls
     renderVH();
     
-    popVideo();
+    //popVideo();
 }
 
 static const uchar playerSpriteE[] =
@@ -1429,21 +1431,20 @@ static const uchar playerSpriteS[] =
     0,
 };
 
-static void _renderPlayer(uchar col)
+static void _renderCreature(Creature* cr, uchar col)
 {
     if (scalebits == MAX_SCALEBITS)
     {
         Coord c;
-        memcpy(&c, &playerPos, sizeof(Coord));
-        clipCoord(&c);
-        if (!(clipx | clipy))
+        c = cr->pos;
+        if (!clipCoord(&c))
         {
             char x = c.x-1;
             char y = c.y-1;
             
             const char* dp = 0;
 
-            switch (playerDir)
+            switch (cr->dir)
             {
             case North:
                 dp = playerSpriteN;
@@ -1466,47 +1467,51 @@ static void _renderPlayer(uchar col)
     }
 }
 
-static void _turnLeft()
+static uchar _turnLeft(uchar d)
 {
-    if (playerDir == 1) playerDir = 16;
-    playerDir >>= 1;
+    d >>= 1;
+    if (!d) d = 8;
+    return d;
 }
 
-static void _turnRight()
+static uchar _turnRight(uchar d)
 {
-    playerDir <<= 1;
-    if (playerDir > 8) playerDir = 1;
+    d <<= 1;
+    if (d > 8) d = 1;
+    return d;
 }
 
 void renderPlayer()
 {
-    _renderPlayer(1);
+    _renderCreature(CPLAYER, 1);
 }
 
 void turnLeft()
 {
-    _renderPlayer(0);
-    _turnLeft();
-    _renderPlayer(1);
+    Creature* cr = CPLAYER;
+    _renderCreature(cr, 0);
+    cr->dir = _turnLeft(cr->dir);
+    _renderCreature(cr, 1);
 }
 
 void turnRight()
 {
-    _renderPlayer(0);
-    _turnRight();
-    _renderPlayer(1);
+    Creature* cr = CPLAYER;
+    _renderCreature(cr, 0);
+    cr->dir = _turnRight(cr->dir);
+    _renderCreature(cr, 1);
 }
 
 void moveFoward()
 {
     Coord c;
-    memcpy(&c, &playerPos, sizeof(Coord));
+    c = player.pos;
 
     char dx = 0;
     char dy = 0;
 
-    switch (playerDir)
-        {
+    switch (player.dir)
+    {
         case North:
             --c.y;
             dy = -1;
@@ -1523,25 +1528,23 @@ void moveFoward()
             --c.x;
             dx = -3;
             break;
-        }
+    }
 
-
+    // coordinate of "head"
     Coord c2;
-    memcpy(&c2, &c, sizeof(Coord));
-    clipCoord(&c2);
-    if (!(clipx | clipy))
+    c2.x = c.x + dx;
+    c2.y = c.y + dy;
+    
+    if (!clipCoord(&c2))
     {
-        dx += c2.x;
-        dy += c2.y;
-
         Int dv;
         char v;
-        if (playerDir & (East|West))
+        if (player.dir & (East|West))
         {
             // check height of sprite
             for (dv = -1; dv <= 1; ++dv)
             {
-                v = getPixel(dx, dy + dv);
+                v = getPixel(c2.x, c2.y + dv);
                 if (v == Floor) v = 0;
                 if (v) break;
             }
@@ -1551,7 +1554,7 @@ void moveFoward()
             // check width of sprite
             for (dv = -3; dv <= 2; ++dv)
             {
-                v = getPixel(dx + dv, dy);
+                v = getPixel(c2.x + dv, c2.y);
                 if (v == Floor) v = 0;
                 if (v) break;
             }
@@ -1559,9 +1562,9 @@ void moveFoward()
 
         if (dv > 1)
         {
-            _renderPlayer(0);
-            memcpy(&playerPos, &c, sizeof(Coord));
-            _renderPlayer(1);
+            _renderCreature(CPLAYER, 0);
+            player.pos = c;
+            _renderCreature(CPLAYER, 1);            
         }
     }
 }

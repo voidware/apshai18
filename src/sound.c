@@ -29,10 +29,12 @@
  *  contact@voidware.com
  */
 
+#include <ctype.h>
+
 #include "defs.h"
 #include "os.h"
-#include "libc.h"
 #include "sound.h"
+
 
 #define BASE_TSTATES_M1 221750L
 #define BASE_TSTATES_M3 257230L
@@ -93,11 +95,6 @@ static int divs(int a, uint b)
     return a >= 0 ? (int)(((uint)a)/b) : -(int)(((uint)(-a))/b);
 }
 #endif
-
-void playVictory()
-{
-    playNotes("16tF6Eb+9D3C2Bb-AAb10");
-}
 
 void playNotes(const char* m)
 {

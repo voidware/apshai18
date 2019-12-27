@@ -29,55 +29,33 @@
  *  contact@voidware.com
  */
 
+#include <stdio.h>
+#include <ctype.h>
+#include <setjmp.h>
+
 #include "defs.h"
 #include "os.h"
-#include "libc.h"
 #include "utils.h"
 #include "dungeon.h"
 #include "plot.h"
+#include "game.h"
 
-// comment in to skip the sound intro when developing
-#define SKIPxx
+// skip RAM test
+#define SKIP
 
-static void peformRAMTest()
-{
-    uchar a = 0;
-    uchar n = TRSMemory;
-    if (n >= 64) n -= 3; // dont test the top 3k screen RAM + KB
-
-    // loop 1K at a time.
-    printfat(0,1,"RAM TEST ");
-    do
-    {
-        uchar b = a<<2;
-        ++a;
-        if (TRSMemory < 64) b += 0x40; 
-        
-        printfat(9,1, "%dK ", (int)a);
-        if (!ramTest(b, 4)) break;
-        --n;
-    } while (n);
-
-    if (!n)
-        printf("OK\n");
-    else
-        printf("FAILED at %x\n", (uint)TRSMemoryFail);
-}
+jmp_buf main_env;
+Player player;
 
 static char getSingleCommand(const char* msg)
 {
-    char c;
     lastLine();
-    outs(msg);
-    c = getkey();
-    if (islower(c)) c = _toupper(c);
-    return c;
+    return getSingleChar(msg);
 }
 
 static void startGame()
 {
     uchar v = 1;
-    char c;
+    static char key;
 
     cls();
 
@@ -92,42 +70,46 @@ static void startGame()
             v = 0;
         }
         
-        c = scanKey();
-        if (c == ' ') break;
-        if (islower(c)) c = _toupper(c);
-        if (c == KEY_ARROW_RIGHT)
+        key = toupper(scanKeyMatrix(key));
+
+        switch (key)
         {
+        case KEY_ARROW_RIGHT:
             panXY(1,0);
             v = 1;
-        }
-        else if (c == KEY_ARROW_LEFT)
-        {
+            break;
+        case KEY_ARROW_LEFT:
             panXY(-1,0);
             v = 1;
-        }
-        else if (c == KEY_ARROW_UP)
-        {
+            break;
+        case KEY_ARROW_UP:
             panXY(0,-1);
             v = 1;
-        }
-        else if (c == KEY_ARROW_DOWN)
-        {
+            break;
+        case KEY_ARROW_DOWN:
             panXY(0,1);
             v = 1;
-        }
-        else if (c == 'I')
-        {
+            break;
+        case 'I':
             zoomIn();
             v = 1;
-        }
-        else if (c == 'O')
-        {
+            break;
+        case 'O':
             zoomOut();
             v = 1;
+            break;
+        case 'A':
+            turnLeft();
+            break;
+        case 'D':
+            turnRight();
+            break;
+        case 'W':
+            moveFoward();
+            break;
         }
-        else if (c == 'A') turnLeft();
-        else if (c == 'D') turnRight();
-        else if (c == 'W') moveFoward();
+
+        if (strchr("IOAD", key)) key = 0;
     }
 }
 
@@ -135,12 +117,12 @@ static void mainloop()
 {
     cls();
     
-    printf("TRS-80 Model %d (%dk RAM)\n", (int)TRSModel, (int)TRSMemory);
+    printf_simple("TRS-80 Model %d (%dK RAM)\n", (int)TRSModel, (int)TRSMemory);
 
 #ifdef SKIP
     {
         //int v;
-        //printf("Stack %x\n", ((int)&v) + 4);
+        //printf_simple("Stack %x\n", ((int)&v) + 4);
     }
 #else
 
@@ -153,22 +135,24 @@ static void mainloop()
 
     for (;;)
     {
-        char c;
-        startGame();
-
-        c = getSingleCommand("Play Again (Y/N)?");
-        if (c == 'N') break; 
+        if (!setjmp(main_env))
+        {
+            startGame();
+        }
+        else
+        {
+            char c = getSingleCommand("Play Again? (Y/N)");
+            if (c != 'Y') break;
+        }
     }
 }
 
-void main()
+int main()
 {
     initModel();
     setStack();
-    
-    // initialise our own mini-clib
-    libcInit();
-    
     mainloop();
     revertStack();
+    
+    return 0;   // need this to ensure call to revert (else jp)
 }

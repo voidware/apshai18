@@ -1,0 +1,10 @@
+*.asm
+*.ihx
+*.lst
+*.map
+*.rel
+*.noi
+*.sym
+*.exe
+*.obj
+TAGS

@@ -1,1 +1,1 @@
-..\emu\trs80gp -m1 -50 -ld -d1 apshai18.dsk 
+..\emu\trs80gp -m1 -50 -ld -nlc -d1 apshai18.dsk 

@@ -7,11 +7,17 @@ CC = sdcc
 AS = sdasz80
 LD = sdldz80
 DEBUG = 
-OPT2 = --max-allocs-per-node 100000 
-OPT = --all-callee-saves --opt-code-size
-#OPT = --max-allocs-per-node 100000 
-CFLAGS = -mz80 --std-sdcc11 --fsigned-char $(OPT) $(DEBUG)
+# callee-saves appears not available on Z80
+OPTBASE = --opt-code-size #--all-callee-saves
+
+OPT = $(OPTBASE) --max-allocs-per-node 20000
+OPT2 = $(OPTBASE) --max-allocs-per-node 100000 
+
 ASFLAGS = -l
+DEFS = -DNDEBUG 
+
+CFLAGS = -mz80 --std-sdcc11 --fsigned-char $(OPT) $(DEBUG) $(DEFS)
+
 
 ## set up your path to where the SDCC Z80 lib is
 LIBS = -l $(SDCCDIR)/lib/z80/z80.lib
@@ -26,10 +32,7 @@ OBJS = \
 	apshai18.rel \
 	plot.rel \
 	os.rel \
-	utils.rel \
 	sound.rel \
-	libc.rel \
-	libcbase.rel \
 	soundbit.rel \
 	dungeon.rel 
 
