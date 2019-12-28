@@ -162,6 +162,8 @@ Turning does not take a turn.
 * Copper Pieces
 * Pieces of silver (= 10 copper)
 * Gold coins (= 10 silver)
+* Small Diammond (= 50 silver)
+* Diamond (= 100 silver)
 
 ## Equipment
 
@@ -225,25 +227,25 @@ Level 1:
 
 Name | Description | Silver Value
 --- | --- |---
-T01 | Lilies (healing potion) | 0
-T02 | Incense Moss | 30
+T01 | Lillies (healing potion) | 1
+T02 | Incense Moss | 3
 T03 | Phosphorescent Algae | 5
-T04 | Mithril (magic) shield
-T05 | Food Algae x2 | 5
-T06 | Mushrooms x2 | 6
-T07 | Kelp x2 | 5
+T04 | Mithril (magic) shield | 10
+T05 | Food Algae (2 places) | 5
+T06 | Mushrooms (2 places) | 6
+T07 | Kelp (2 places) | 6
 T08 | 4 Gold Pieces | 40
-T09 | X Arrows with Silver Points x2 | X
-T10 | 5 Small Diamonds x3 | 5x100
-T11 | 8 Small Diamonds | 8x100
-T12 | 4 Small Diamonds x3 | 4x100
-T13 | 7 Small Diamonds | 7x100
-T14 | deleted
-T15 | Magic Sword and 2 gold pieces | 2 
-T16 | 5 Magic arrows
+T09 | 6 Arrows with Silver Points | 6
+T10 | 5 Small Diamonds (3 places) | 250
+T11 | 8 Small Diamonds | 400
+T12 | 4 Small Diamonds (3 places) | 200
+T13 | 7 Small Diamonds | 350
+T14 | 10 Arrows with Silver Points | 10
+T15 | Magic Sword and 2 gold pieces | 200 
+T16 | 5 Magic arrows | 50
 T17 | Copper Ingot | 20
-T18 | chest with 200 silver pieces and a diamond ring | 200+300
-T20 | Worthless Items 
+T18 | chest with 200 silver pieces and a diamond ring | 400
+T20 | Worthless Items | 0
 
 ### Listening
 

@@ -34,7 +34,9 @@ OBJS = \
 	os.rel \
 	sound.rel \
 	soundbit.rel \
-	dungeon.rel 
+	dungeon.rel \
+	dist.rel \
+	rect.rel
 
 %.rel: %.c
 	$(CC) $(CFLAGS) -c $< 

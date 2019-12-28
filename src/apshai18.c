@@ -38,13 +38,14 @@
 #include "utils.h"
 #include "dungeon.h"
 #include "plot.h"
+#include "rect.h"
 #include "game.h"
+#include "dist.h"
 
 // skip RAM test
 #define SKIP
 
 jmp_buf main_env;
-Player player;
 
 static char getSingleCommand(const char* msg)
 {
@@ -60,6 +61,9 @@ static void startGame()
     cls();
 
     while (!generateDungeon()) ;
+
+    TPF("Placing Treasure...\n");
+    distributeTreasure(treasures);
 
     for (;;)
     {

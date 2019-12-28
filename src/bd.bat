@@ -1,2 +1,2 @@
-cl /Ox -DSTANDALONE dungeon.c
+cl /Ox -DSTANDALONE dungeon.c rect.c
 

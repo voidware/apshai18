@@ -6,7 +6,7 @@
  *   | |/ // /_/ // // /_/ / | |/ |/ // /_/ // /   /  __/
  *   |___/ \____//_/ \__,_/  |__/|__/ \__,_//_/    \___/ 
  *                                                       
- *  Copyright (©) Voidware 2018.
+ *  Copyright (Â©) Voidware 2019.
  *
  *  Permission is hereby granted, free of charge, to any person obtaining a copy
  *  of this software and associated documentation files (the "Software"), to
@@ -29,13 +29,5 @@
  *  contact@voidware.com
  */
 
-typedef struct
-{
-    char x1;
-    char y1;
-    char x2;
-    char y2;
-} Rect;
+void distributeTreasure(Treasure* tr);
 
-
-BOOL rectContainsPoint(Rect* r, char x, char y);

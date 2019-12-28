@@ -7,4 +7,6 @@
 *.sym
 *.exe
 *.obj
+*.ilk
+*.pdb
 TAGS

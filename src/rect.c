@@ -29,13 +29,10 @@
  *  contact@voidware.com
  */
 
-typedef struct
+#include "defs.h"
+#include "rect.h"
+
+BOOL rectContainsPoint(Rect* r, char x, char y)
 {
-    char x1;
-    char y1;
-    char x2;
-    char y2;
-} Rect;
-
-
-BOOL rectContainsPoint(Rect* r, char x, char y);
+    return r->x1 <= x && x < r->x2 && r->y1 <= y && y < r->y2;
+}

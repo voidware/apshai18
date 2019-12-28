@@ -972,7 +972,6 @@ unsigned int rand16()
     return seed;
 }
 
-#if 0
 uint randn(uint n)
 {
     // random [0,n-1]
@@ -991,7 +990,6 @@ uint randn(uint n)
     
     return v;
 }
-#endif
 
 uchar randc(uchar n)
 {

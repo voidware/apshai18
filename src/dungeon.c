@@ -46,30 +46,18 @@
 
 #ifdef STANDALONE
 
-// bigger arrays so dungeon will always generate
-#define LOTS
-
 #include <assert.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <time.h>
 
-static int verbose = 1;
 static int halt = 0;
-
-// debug printf
-#define DPF(_c, _x)  if (_c) printf(_x)
-#define DPF1(_c, _x, _a)  if (_c) printf(_x, _a)
-#define DPF2(_c, _x, _a, _b)  if (_c) printf(_x, _a, _b)
 
 // error print
 #define EPF(_c, _x)  { if (_c) { printf(_x); halt=1;} }
 #define EPF1(_c, _x, _a)  { if (_c) { printf(_x, _a); halt=1; } }
 #define EPF2(_c, _x, _a, _b)  { if (_c) { printf(_x, _a, _b); halt=1; } }
 
-// TRS print
-#define TPF(_x)
-#define TPF1(_x, _a)
 
 static uint64_t _seed = 4101842887655102017LL;
 
@@ -96,15 +84,9 @@ static unsigned int randc(unsigned int n)
 #include "os.h"
 #include "plot.h"
 
-#define assert(_x)
-#define DPF(_c, _x)
-#define DPF1(_c, _x, _a)
-#define DPF2(_c, _x, _a, _b)
 #define EPF(_c, _x)
 #define EPF1(_c, _x, _a)
 #define EPF2(_c, _x, _a, _b)
-#define TPF(_x)   printf_simple(_x)
-#define TPF1(_x, _a)   printf_simple(_x, _a)
 
 #endif // STANDALONE
 
@@ -112,8 +94,6 @@ static unsigned int randc(unsigned int n)
 #define DUN_WBITS 6U
 #define DUN_WIDTH  (1<<DUN_WBITS)
 #define DUN_HEIGHT 48
-#define NUM_FEATUES 50
-#define MAX_ROOMS (NUM_FEATUES+1)
 
 #define minRoomSizeX 4
 #define maxRoomSizeX 6
@@ -130,12 +110,6 @@ static unsigned int randc(unsigned int n)
 // if all were rooms, this can be exceeded
 #define MAX_EXITS ((NUM_FEATUES+1)*3+2)
 
-#ifdef LOTS
-#define MAX_ROOM_EXITS 7
-#else
-// this is not enough, some rooms require 6 or even more
-#define MAX_ROOM_EXITS 5
-#endif
 
 #ifdef SMALL
 typedef signed char Int;
@@ -159,15 +133,6 @@ static Uint randomInt(Uint a, Uint b)
 
 #define TILE_BASE(_x, _y) (_tiles + (_x) + ((_y) << DUN_WBITS))
 
-typedef struct 
-{
-    Uint x;
-    Uint y;
-    Int d; // direction
-    Uint flags;
-    Uint room; // index into rooms when exit added
-    Uint otherroom;
-} Exit;
 
 #define EXIT_IS_FINAL(_e) ((_e).flags & 1)
 #define EXIT_SET_FINAL(_e) ((_e).flags |= 1)
@@ -193,15 +158,6 @@ typedef struct
     
 } Ent;
 
-enum Direction
-	{
-        Void = 0,
-		North = 1,
-        East = 2,
-		South = 4, 
-		West = 8,
-	};
-    
 enum Tile
 	{
 		Unused		= 0,
@@ -218,22 +174,20 @@ enum FailCode
         fail_max_exits = 2,
     };
 
-typedef struct
-{
-    Rect    r;
-    uchar   no; // room number
-    uchar   exits[MAX_ROOM_EXITS];  // index into exits array, 1-based
-} Room;
 
 // these are valid during generation
 static unsigned char* _tiles;
 
 static Uint generationFailed;
-static Uint roomCount; // rooms+corridors
-static Uint corridorCount;
-static Room rooms[MAX_ROOMS];  // valid after generation
-static Uint exitCount;
-static Exit exits[MAX_EXITS];
+
+
+Uint roomCount; // rooms+corridors
+Uint corridorCount;
+Room rooms[MAX_ROOMS];  // valid after generation
+Uint treasureCount;
+Treasure treasures[MAX_TREASURES];
+Uint exitCount;
+Exit exits[MAX_EXITS];
 
 typedef struct
 {
@@ -259,6 +213,8 @@ static int viewx;
 static int viewy;
 static Uint scalebits;
 static Uint entranceRoom;
+
+Player player;
 
 #define VIEW_W  128
 #define VIEW_H  48
@@ -540,17 +496,18 @@ static void addExitY(Ent* e, Uint x, Int d)
     addExit(x, e->r.y1 + randc(e->h-2) + 2, d);
 }
 
-static void addRoom(Ent* e)
+static void addRoom(Ent* e, uchar flags)
 {
     // keep track of the boxes for each room or corridor
     // these will need to be scaled up as usual
     Room* rp = rooms + roomCount;
     memset(rp, 0, sizeof(Room));
     rp->r = e->r;
+    rp->flags = flags;
     e->room = ++roomCount; // 1-based
 }
 
-static void placeRect(Ent* e)
+static void placeRect(Ent* e, uchar flags)
 {
     // assume Already checked
     unsigned char* t1;
@@ -558,7 +515,7 @@ static void placeRect(Ent* e)
     unsigned char* t3;
     Uint x, y;
 
-    addRoom(e);
+    addRoom(e, flags);
 
     // expand up and back so we can paint the border
     --e->r.x1;
@@ -656,7 +613,7 @@ static void placeRoom(Ent* e)
 {
     // assume already checked
         
-    placeRect(e);
+    placeRect(e, room_normal);
 
     if (e->d != South) // north side
         addExitX(e, e->r.y1, North);
@@ -742,7 +699,7 @@ static void placeCorridor(Ent* e)
 {
     // assume already checked
         
-    placeRect(e);
+    placeRect(e, room_corridor);
     addExit(e->ox, e->oy, -e->d);
 
     ++corridorCount;
@@ -1292,18 +1249,18 @@ BOOL generateDungeon()
     
     for (;;)
     {
-        Uint n = roomCount;
-        if (n >= NUM_FEATUES) break; // enough
+        if (roomCount >= NUM_FEATUES) break; // enough
 
-        TPF1("\b\b\b%2d%%", (int)(n<<1));
+        TPF1("\b\b\b%2d%%", (int)(roomCount<<1));
         if (!createFeature())
+            
         {
             DPF(verbose, "cannot add any more features\n");
             break;
         }
     }
 
-    TPF("\n");
+    TPF("\b\b\b100%%\n");
 
     if (!generationFailed)
     {
