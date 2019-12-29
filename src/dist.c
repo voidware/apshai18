@@ -139,8 +139,12 @@ void distributeTreasure(Treasure* tr)
         retry: ;
             
             uchar y = 0;
-            uchar m = 1;
             int sum = 0;
+            char m;
+
+            // start off negative so valuables do not get allocated
+            // to early rooms
+            m = 1 - (v >> 1);
 
             // build probability gradient for each room
             for (i = 0; i < roomCount; ++i)
@@ -154,7 +158,7 @@ void distributeTreasure(Treasure* tr)
 
                 prob[i] = 0;
 
-                if (!mark[i]) // available?
+                if (m > 0 && !mark[i]) // available?
                 {
                     prob[i] = m;
                     sum += m;
@@ -167,16 +171,16 @@ void distributeTreasure(Treasure* tr)
             if (!sum)
             {
                 // release adjacent locations
-                v = 0;
+                y = 0;
                 for (i = 0; i < roomCount; ++i)
                 {
                     if (mark[i] < 0)
                     {
                         mark[i] = 0;
-                        ++v;
+                        ++y;
                     }
                 }
-                if (!v)
+                if (!y)
                 {
                     DPF(verbose, "Failed to allocate room!\n");
                     goto done;
@@ -222,9 +226,18 @@ void distributeTreasure(Treasure* tr)
 
 #ifdef STANDALONE
 
-int main()
+int main(int argc, char** argv)
 {
     seed(time(0));
+
+    int i;
+    for (i = 1; i < argc; ++i)
+    {
+        if (!strcmp(argv[i], "-v"))
+        {
+            verbose = atoi(argv[++i]);
+        }
+    }
 
     // how many treasures
     int tcount = 0;
@@ -242,7 +255,6 @@ int main()
     // fake arrangement of corridors
     roomCount = 50;
     corridorCount = 0;
-    int i;
     for (i = 0; i < roomCount; ++i)
     {
         int v = randc(2);
